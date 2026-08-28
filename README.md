@@ -64,5 +64,6 @@ mocked OS calls.
 
 ## Status
 
-Early skeleton. Normalization, tree construction, and text rendering work;
-there's no test suite or CLI yet.
+Early skeleton. Normalization, tree construction, and text rendering work.
+`normalizeProcessRecord`/`normalizeProcessRecords` have a unit test suite
+(`npm test`); tree construction and the CLI still don't.
