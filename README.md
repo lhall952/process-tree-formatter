@@ -48,6 +48,34 @@ Notes on what happened to the messy input above:
 - pid `7`'s ppid (`999`) points at nothing in the input, so it surfaces as
   its own root rather than being silently discarded.
 
+## CLI
+
+```
+node dist/cli.js [file] [options]
+```
+
+Reads a process listing from `file`, or from stdin if no file is given, and
+prints the tree. The input can be a table in the shape `ps -ef` or `ps aux`
+print, or a JSON array of raw process records.
+
+```
+ps -ef | node dist/cli.js
+```
+
+```
+Options:
+  --file <path>   read from this file instead of stdin
+  --args          include command arguments in the output
+  --no-pid        omit pids from the output
+  --indent <str>  string used per indent level (default: two spaces)
+  -h, --help      show this message
+```
+
+The table parser reads the header line to find the PID, PPID, command, and
+user columns (however the source names them - `CMD` or `COMMAND`, `UID` or
+`USER`) and treats the last column as the command, spaces and all, since
+that's always where `ps` puts it.
+
 ## Design
 
 Every exported function is pure: given the same arguments it returns the
@@ -64,6 +92,7 @@ mocked OS calls.
 
 ## Status
 
-Early skeleton. Normalization, tree construction, and text rendering all
-have unit test coverage (`npm test`), including dangling parents and cyclic
-ppid chains. No CLI yet.
+Early skeleton. Normalization, tree construction, text rendering, and the
+CLI's input parsing all have unit test coverage (`npm test`), including
+dangling parents and cyclic ppid chains. Output is text only so far - no
+JSON or dot format yet, and rendering still recurses per tree depth.
