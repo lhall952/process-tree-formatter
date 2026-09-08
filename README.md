@@ -64,17 +64,22 @@ ps -ef | node dist/cli.js
 
 ```
 Options:
-  --file <path>   read from this file instead of stdin
-  --args          include command arguments in the output
-  --no-pid        omit pids from the output
-  --indent <str>  string used per indent level (default: two spaces)
-  -h, --help      show this message
+  --file <path>     read from this file instead of stdin
+  --format <fmt>    "text" (default) or "json"
+  --args            include command arguments in the output
+  --no-pid          omit pids from the output
+  --indent <str>    string used per indent level, text format only (default: two spaces)
+  -h, --help        show this message
 ```
 
 The table parser reads the header line to find the PID, PPID, command, and
 user columns (however the source names them - `CMD` or `COMMAND`, `UID` or
 `USER`) and treats the last column as the command, spaces and all, since
 that's always where `ps` puts it.
+
+`--format json` prints the full normalized tree (pid, ppid, command, args,
+user, and nested children) as JSON, ignoring `--args`, `--no-pid`, and
+`--indent` since those only shape the text renderer's output.
 
 ## Design
 
@@ -94,5 +99,6 @@ mocked OS calls.
 
 Early skeleton. Normalization, tree construction, text rendering, and the
 CLI's input parsing all have unit test coverage (`npm test`), including
-dangling parents and cyclic ppid chains. Output is text only so far - no
-JSON or dot format yet, and rendering still recurses per tree depth.
+dangling parents and cyclic ppid chains. The CLI supports text and JSON
+output; dot (graphviz) output is not implemented yet, and rendering still
+recurses per tree depth.

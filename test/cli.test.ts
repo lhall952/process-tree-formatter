@@ -72,10 +72,48 @@ test('parseArgs treats a bare positional argument as the file path', () => {
 
 test('parseArgs reads --file, --args, --no-pid, and --indent', () => {
   const options = parseArgs(['--file', 'a.txt', '--args', '--no-pid', '--indent', '> '])
-  assert.deepEqual(options, { file: 'a.txt', showArgs: true, showPid: false, indent: '> ' })
+  assert.deepEqual(options, { file: 'a.txt', format: 'text', showArgs: true, showPid: false, indent: '> ' })
 })
 
-test('parseArgs defaults to stdin, no args, pids shown, two-space indent', () => {
+test('parseArgs defaults to stdin, text format, no args, pids shown, two-space indent', () => {
   const options = parseArgs([])
-  assert.deepEqual(options, { file: undefined, showArgs: false, showPid: true, indent: '  ' })
+  assert.deepEqual(options, { file: undefined, format: 'text', showArgs: false, showPid: true, indent: '  ' })
+})
+
+test('parseArgs reads --format json', () => {
+  const options = parseArgs(['--format', 'json'])
+  assert.equal(options === 'help' ? undefined : options.format, 'json')
+})
+
+test('parseArgs rejects an unrecognized --format value', () => {
+  assert.throws(() => parseArgs(['--format', 'xml']), /--format must be "text" or "json"/)
+})
+
+test('a parsed ps table feeds through to json output with the full canonical tree', () => {
+  const text = [
+    'UID   PID  PPID CMD',
+    'root    1     0 init',
+    'root   42     1 nginx: master process',
+  ].join('\n')
+
+  const tree = buildProcessTree(normalizeProcessRecords(parseInput(text)))
+  assert.deepEqual(JSON.parse(JSON.stringify(tree)), [
+    {
+      pid: 1,
+      ppid: null,
+      command: 'init',
+      args: [],
+      user: 'root',
+      children: [
+        {
+          pid: 42,
+          ppid: 1,
+          command: 'nginx: master process',
+          args: [],
+          user: 'root',
+          children: [],
+        },
+      ],
+    },
+  ])
 })

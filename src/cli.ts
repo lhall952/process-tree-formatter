@@ -12,11 +12,16 @@ prints it as an indented tree. The input can be a table like "ps -ef" or
 docker inspect or a /proc scrape would produce).
 
 Options:
-  --file <path>   read from this file instead of stdin
-  --args          include command arguments in the output
-  --no-pid        omit pids from the output
-  --indent <str>  string used per indent level (default: two spaces)
-  -h, --help      show this message
+  --file <path>     read from this file instead of stdin
+  --format <fmt>    "text" (default) or "json"
+  --args            include command arguments in the output
+  --no-pid          omit pids from the output
+  --indent <str>    string used per indent level, text format only (default: two spaces)
+  -h, --help        show this message
+
+In json format the full normalized tree is printed (pid, ppid, command,
+args, user, children); --args, --no-pid, and --indent only affect text
+output.
 `
 
 // Column names vary across ps variants ("PID" vs "pid", "CMD" vs "COMMAND",
@@ -83,15 +88,24 @@ export function parseInput(text: string): RawProcessRecord[] {
   return parsePsTable(trimmed)
 }
 
+export type OutputFormat = 'text' | 'json'
+
 interface CliOptions {
   readonly file: string | undefined
+  readonly format: OutputFormat
   readonly showArgs: boolean
   readonly showPid: boolean
   readonly indent: string
 }
 
+function parseFormat(value: string | undefined): OutputFormat {
+  if (value === 'text' || value === 'json') return value
+  throw new Error(`--format must be "text" or "json", got ${value === undefined ? 'nothing' : JSON.stringify(value)}`)
+}
+
 export function parseArgs(argv: readonly string[]): CliOptions | 'help' {
   let file: string | undefined
+  let format: OutputFormat = 'text'
   let showArgs = false
   let showPid = true
   let indent = '  '
@@ -104,6 +118,9 @@ export function parseArgs(argv: readonly string[]): CliOptions | 'help' {
         return 'help'
       case '--file':
         file = argv[++i]
+        break
+      case '--format':
+        format = parseFormat(argv[++i])
         break
       case '--args':
         showArgs = true
@@ -119,7 +136,7 @@ export function parseArgs(argv: readonly string[]): CliOptions | 'help' {
     }
   }
 
-  return { file, showArgs, showPid, indent }
+  return { file, format, showArgs, showPid, indent }
 }
 
 function readInput(path: string | undefined): string {
@@ -137,6 +154,12 @@ function main(): void {
   const text = readInput(options.file)
   const records = normalizeProcessRecords(parseInput(text))
   const tree = buildProcessTree(records)
+
+  if (options.format === 'json') {
+    process.stdout.write(`${JSON.stringify(tree, null, 2)}\n`)
+    return
+  }
+
   const output = formatProcessTree(tree, {
     showArgs: options.showArgs,
     showPid: options.showPid,
