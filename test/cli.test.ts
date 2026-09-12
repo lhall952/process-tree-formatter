@@ -1,7 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseArgs, parseInput } from '../src/cli.js'
-import { buildProcessTree, formatProcessTree, normalizeProcessRecords } from '../src/process-tree.js'
+import {
+  buildProcessTree,
+  formatProcessTree,
+  formatProcessTreeAsDot,
+  normalizeProcessRecords,
+} from '../src/process-tree.js'
 
 test('parseInput reads a JSON array of raw records as-is', () => {
   const records = parseInput('[{"pid": 1, "command": "init"}, {"pid": 2, "ppid": 1, "command": "sshd"}]')
@@ -86,7 +91,32 @@ test('parseArgs reads --format json', () => {
 })
 
 test('parseArgs rejects an unrecognized --format value', () => {
-  assert.throws(() => parseArgs(['--format', 'xml']), /--format must be "text" or "json"/)
+  assert.throws(() => parseArgs(['--format', 'xml']), /--format must be "text", "json", or "dot"/)
+})
+
+test('parseArgs reads --format dot', () => {
+  const options = parseArgs(['--format', 'dot'])
+  assert.equal(options === 'help' ? undefined : options.format, 'dot')
+})
+
+test('a parsed ps table feeds through to dot output with one node and edge per link', () => {
+  const text = [
+    'UID   PID  PPID CMD',
+    'root    1     0 init',
+    'root   42     1 nginx: master process',
+  ].join('\n')
+
+  const tree = buildProcessTree(normalizeProcessRecords(parseInput(text)))
+  assert.equal(
+    formatProcessTreeAsDot(tree),
+    [
+      'digraph processes {',
+      '  1 [label="init (1)"];',
+      '  1 -> 42;',
+      '  42 [label="nginx: master process (42)"];',
+      '}',
+    ].join('\n'),
+  )
 })
 
 test('a parsed ps table feeds through to json output with the full canonical tree', () => {

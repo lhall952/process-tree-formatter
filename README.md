@@ -65,7 +65,7 @@ ps -ef | node dist/cli.js
 ```
 Options:
   --file <path>     read from this file instead of stdin
-  --format <fmt>    "text" (default) or "json"
+  --format <fmt>    "text" (default), "json", or "dot"
   --args            include command arguments in the output
   --no-pid          omit pids from the output
   --indent <str>    string used per indent level, text format only (default: two spaces)
@@ -78,8 +78,25 @@ user columns (however the source names them - `CMD` or `COMMAND`, `UID` or
 that's always where `ps` puts it.
 
 `--format json` prints the full normalized tree (pid, ppid, command, args,
-user, and nested children) as JSON, ignoring `--args`, `--no-pid`, and
-`--indent` since those only shape the text renderer's output.
+user, and nested children) as JSON; `--indent` doesn't apply there.
+
+`--format dot` prints a Graphviz `digraph`, one node per pid with an edge to
+each child, ready to pipe into `dot`:
+
+```
+ps -ef | node dist/cli.js --format dot | dot -Tpng -o tree.png
+```
+
+```
+digraph processes {
+  1 [label="init (1)"];
+  1 -> 42;
+  42 [label="nginx: master process (42)"];
+}
+```
+
+`--args` and `--no-pid` shape the node labels the same way they shape text
+output; `--indent` doesn't apply to dot either.
 
 ## Design
 
@@ -94,11 +111,13 @@ mocked OS calls.
 - `buildProcessTree` turns a flat list of records into a forest, resolving
   dangling parent links and breaking cycles deterministically.
 - `formatProcessTree` renders a forest as indented text.
+- `formatProcessTreeAsDot` renders a forest as a Graphviz `digraph`.
 
 ## Status
 
-Early skeleton. Normalization, tree construction, text rendering, and the
+Early skeleton. Normalization, tree construction, both renderers, and the
 CLI's input parsing all have unit test coverage (`npm test`), including
-dangling parents and cyclic ppid chains. The CLI supports text and JSON
-output; dot (graphviz) output is not implemented yet, and rendering still
-recurses per tree depth.
+dangling parents and cyclic ppid chains. The CLI supports text, JSON, and
+dot output. Rendering still recurses per tree depth, which is fine for a
+normal process tree but will blow the call stack on a pathologically deep
+or adversarially-crafted one.

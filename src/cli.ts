@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs'
 import process from 'node:process'
-import { buildProcessTree, formatProcessTree, normalizeProcessRecords } from './process-tree.js'
+import {
+  buildProcessTree,
+  formatProcessTree,
+  formatProcessTreeAsDot,
+  normalizeProcessRecords,
+} from './process-tree.js'
 import type { RawProcessRecord } from './types.js'
 
 const USAGE = `usage: process-tree [file] [options]
@@ -13,15 +18,17 @@ docker inspect or a /proc scrape would produce).
 
 Options:
   --file <path>     read from this file instead of stdin
-  --format <fmt>    "text" (default) or "json"
+  --format <fmt>    "text" (default), "json", or "dot"
   --args            include command arguments in the output
   --no-pid          omit pids from the output
   --indent <str>    string used per indent level, text format only (default: two spaces)
   -h, --help        show this message
 
 In json format the full normalized tree is printed (pid, ppid, command,
-args, user, children); --args, --no-pid, and --indent only affect text
-output.
+args, user, children); --indent doesn't apply there. In dot format, each
+process becomes a node (keyed by pid) with an edge to each child, suitable
+for piping into "dot -Tpng"; --args and --no-pid shape the node labels,
+but --indent doesn't apply there either.
 `
 
 // Column names vary across ps variants ("PID" vs "pid", "CMD" vs "COMMAND",
@@ -88,7 +95,7 @@ export function parseInput(text: string): RawProcessRecord[] {
   return parsePsTable(trimmed)
 }
 
-export type OutputFormat = 'text' | 'json'
+export type OutputFormat = 'text' | 'json' | 'dot'
 
 interface CliOptions {
   readonly file: string | undefined
@@ -99,8 +106,10 @@ interface CliOptions {
 }
 
 function parseFormat(value: string | undefined): OutputFormat {
-  if (value === 'text' || value === 'json') return value
-  throw new Error(`--format must be "text" or "json", got ${value === undefined ? 'nothing' : JSON.stringify(value)}`)
+  if (value === 'text' || value === 'json' || value === 'dot') return value
+  throw new Error(
+    `--format must be "text", "json", or "dot", got ${value === undefined ? 'nothing' : JSON.stringify(value)}`,
+  )
 }
 
 export function parseArgs(argv: readonly string[]): CliOptions | 'help' {
@@ -157,6 +166,15 @@ function main(): void {
 
   if (options.format === 'json') {
     process.stdout.write(`${JSON.stringify(tree, null, 2)}\n`)
+    return
+  }
+
+  if (options.format === 'dot') {
+    const dotOutput = formatProcessTreeAsDot(tree, {
+      showArgs: options.showArgs,
+      showPid: options.showPid,
+    })
+    process.stdout.write(`${dotOutput}\n`)
     return
   }
 

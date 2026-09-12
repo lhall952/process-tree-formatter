@@ -8,6 +8,7 @@ export type {
 export {
   buildProcessTree,
   formatProcessTree,
+  formatProcessTreeAsDot,
   normalizeProcessRecord,
   normalizeProcessRecords,
 } from './process-tree.js'

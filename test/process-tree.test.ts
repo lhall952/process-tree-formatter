@@ -1,6 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildProcessTree, formatProcessTree, normalizeProcessRecords } from '../src/process-tree.js'
+import {
+  buildProcessTree,
+  formatProcessTree,
+  formatProcessTreeAsDot,
+  normalizeProcessRecords,
+} from '../src/process-tree.js'
 import type { ProcessRecord } from '../src/types.js'
 
 function record(pid: number, ppid: number | null, command: string): ProcessRecord {
@@ -132,4 +137,76 @@ test('formatProcessTree honors a custom indent string', () => {
 
 test('formatProcessTree of an empty forest is an empty string', () => {
   assert.equal(formatProcessTree([]), '')
+})
+
+test('formatProcessTreeAsDot renders one node per pid and one edge per parent/child link', () => {
+  const tree = buildProcessTree([
+    record(1, null, 'init'),
+    record(2, 1, 'sshd'),
+    record(3, 2, 'bash'),
+  ])
+
+  assert.equal(
+    formatProcessTreeAsDot(tree),
+    [
+      'digraph processes {',
+      '  1 [label="init (1)"];',
+      '  1 -> 2;',
+      '  2 [label="sshd (2)"];',
+      '  2 -> 3;',
+      '  3 [label="bash (3)"];',
+      '}',
+    ].join('\n'),
+  )
+})
+
+test('formatProcessTreeAsDot can hide pids and show args, like the text renderer', () => {
+  const tree = buildProcessTree([
+    { pid: 1, ppid: null, command: 'nginx', args: ['-g', 'daemon off;'], user: null },
+  ])
+
+  assert.equal(
+    formatProcessTreeAsDot(tree, { showPid: false, showArgs: true }),
+    ['digraph processes {', '  1 [label="nginx -g daemon off;"];', '}'].join('\n'),
+  )
+})
+
+test('formatProcessTreeAsDot escapes double quotes in a label', () => {
+  const tree = buildProcessTree([record(1, null, 'echo "hi"')])
+  assert.equal(
+    formatProcessTreeAsDot(tree),
+    ['digraph processes {', '  1 [label="echo \\"hi\\" (1)"];', '}'].join('\n'),
+  )
+})
+
+test('formatProcessTreeAsDot escapes backslashes in a label', () => {
+  const tree = buildProcessTree([record(1, null, 'C:\\app.exe')])
+  assert.equal(
+    formatProcessTreeAsDot(tree),
+    ['digraph processes {', '  1 [label="C:\\\\app.exe (1)"];', '}'].join('\n'),
+  )
+})
+
+test('formatProcessTreeAsDot of an empty forest is a valid, empty digraph', () => {
+  assert.equal(formatProcessTreeAsDot([]), 'digraph processes {\n}')
+})
+
+test('formatProcessTreeAsDot handles multiple roots and disconnected trees', () => {
+  const tree = buildProcessTree([
+    record(1, null, 'init'),
+    record(2, 1, 'a'),
+    record(9, null, 'other-root'),
+  ])
+
+  assert.equal(
+    formatProcessTreeAsDot(tree),
+    [
+      'digraph processes {',
+      '  1 [label="init (1)"];',
+      '  1 -> 2;',
+      '  2 [label="a (2)"];',
+      '  9 [label="other-root (9)"];',
+      '}',
+    ].join('\n'),
+  )
 })

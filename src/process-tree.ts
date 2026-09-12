@@ -155,6 +155,12 @@ export function buildProcessTree(records: readonly ProcessRecord[]): ProcessTree
   return roots.slice().sort(compareByPid).map(toNode)
 }
 
+function nodeLabel(node: ProcessTreeNode, showPid: boolean, showArgs: boolean): string {
+  const pidPart = showPid ? ` (${node.pid})` : ''
+  const argsPart = showArgs && node.args.length > 0 ? ` ${node.args.join(' ')}` : ''
+  return `${node.command}${pidPart}${argsPart}`
+}
+
 function formatLine(
   node: ProcessTreeNode,
   depth: number,
@@ -162,10 +168,7 @@ function formatLine(
   showPid: boolean,
   showArgs: boolean,
 ): string {
-  const prefix = indent.repeat(depth)
-  const pidPart = showPid ? ` (${node.pid})` : ''
-  const argsPart = showArgs && node.args.length > 0 ? ` ${node.args.join(' ')}` : ''
-  return `${prefix}${node.command}${pidPart}${argsPart}`
+  return `${indent.repeat(depth)}${nodeLabel(node, showPid, showArgs)}`
 }
 
 export function formatProcessTree(
@@ -183,6 +186,37 @@ export function formatProcessTree(
   }
 
   for (const node of nodes) visit(node, 0)
+
+  return lines.join('\n')
+}
+
+// Node labels come from process command strings, which can contain anything
+// (quotes, backslashes, embedded newlines from an unnormalized record) - all
+// of that has to survive as a valid quoted dot string, not break the syntax.
+function dotQuote(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`
+}
+
+export function formatProcessTreeAsDot(
+  nodes: readonly ProcessTreeNode[],
+  options: FormatOptions = {},
+): string {
+  const showPid = options.showPid ?? true
+  const showArgs = options.showArgs ?? false
+  const lines: string[] = ['digraph processes {']
+
+  // pid is already a unique, stable identifier, so it doubles as the dot
+  // node id; the (possibly non-unique, arbitrary-text) label is separate.
+  const visit = (node: ProcessTreeNode): void => {
+    lines.push(`  ${node.pid} [label=${dotQuote(nodeLabel(node, showPid, showArgs))}];`)
+    for (const child of node.children) {
+      lines.push(`  ${node.pid} -> ${child.pid};`)
+    }
+    for (const child of node.children) visit(child)
+  }
+
+  for (const node of nodes) visit(node)
+  lines.push('}')
 
   return lines.join('\n')
 }
