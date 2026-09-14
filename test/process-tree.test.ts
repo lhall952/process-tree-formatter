@@ -191,6 +191,32 @@ test('formatProcessTreeAsDot of an empty forest is a valid, empty digraph', () =
   assert.equal(formatProcessTreeAsDot([]), 'digraph processes {\n}')
 })
 
+test('a chain deep enough to blow a naive recursive call stack still builds and renders', () => {
+  const depth = 200_000
+  const records: ProcessRecord[] = [record(0, null, 'init')]
+  for (let pid = 1; pid < depth; pid++) {
+    records.push(record(pid, pid - 1, `p${pid}`))
+  }
+
+  const tree = buildProcessTree(records)
+  assert.equal(pids(tree)[0], 0)
+
+  let deepest = tree[0]!
+  let count = 1
+  while (deepest.children.length > 0) {
+    deepest = deepest.children[0]!
+    count++
+  }
+  assert.equal(count, depth)
+  assert.equal(deepest.pid, depth - 1)
+
+  const text = formatProcessTree(tree)
+  assert.equal(text.split('\n').length, depth)
+
+  const dot = formatProcessTreeAsDot(tree)
+  assert.equal(dot.split('\n').length, depth + 2)
+})
+
 test('formatProcessTreeAsDot handles multiple roots and disconnected trees', () => {
   const tree = buildProcessTree([
     record(1, null, 'init'),

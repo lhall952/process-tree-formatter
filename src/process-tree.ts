@@ -144,15 +144,33 @@ export function buildProcessTree(records: readonly ProcessRecord[]): ProcessTree
     childrenOf.set(parent, siblings)
   }
 
-  const toNode = (record: ProcessRecord): ProcessTreeNode => ({
-    ...record,
-    children: (childrenOf.get(record.pid) ?? [])
-      .slice()
-      .sort(compareByPid)
-      .map(toNode),
-  })
+  for (const siblings of childrenOf.values()) siblings.sort(compareByPid)
+  const sortedRoots = roots.slice().sort(compareByPid)
 
-  return roots.slice().sort(compareByPid).map(toNode)
+  // Two-stack iterative post-order walk (rather than recursion) so a tree
+  // thousands of generations deep doesn't blow the call stack: pushStack
+  // visits nodes root-first, collectStack ends up holding them leaf-first
+  // once reversed, which is the order children need to exist before the
+  // parent that references them is built.
+  const pushStack: ProcessRecord[] = sortedRoots.slice()
+  const collectStack: ProcessRecord[] = []
+  while (pushStack.length > 0) {
+    const record = pushStack.pop()!
+    collectStack.push(record)
+    const children = childrenOf.get(record.pid)
+    if (children !== undefined) {
+      for (const child of children) pushStack.push(child)
+    }
+  }
+
+  const nodeOf = new Map<number, ProcessTreeNode>()
+  for (let i = collectStack.length - 1; i >= 0; i--) {
+    const record = collectStack[i]!
+    const children = (childrenOf.get(record.pid) ?? []).map((child) => nodeOf.get(child.pid)!)
+    nodeOf.set(record.pid, { ...record, children })
+  }
+
+  return sortedRoots.map((record) => nodeOf.get(record.pid)!)
 }
 
 function nodeLabel(node: ProcessTreeNode, showPid: boolean, showArgs: boolean): string {
@@ -180,12 +198,18 @@ export function formatProcessTree(
   const showArgs = options.showArgs ?? false
   const lines: string[] = []
 
-  const visit = (node: ProcessTreeNode, depth: number): void => {
-    lines.push(formatLine(node, depth, indent, showPid, showArgs))
-    for (const child of node.children) visit(child, depth + 1)
-  }
+  // Iterative pre-order walk: push in reverse so pop() still yields
+  // children left to right, without recursing once per tree level.
+  const stack: Array<{ node: ProcessTreeNode; depth: number }> = []
+  for (let i = nodes.length - 1; i >= 0; i--) stack.push({ node: nodes[i]!, depth: 0 })
 
-  for (const node of nodes) visit(node, 0)
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!
+    lines.push(formatLine(node, depth, indent, showPid, showArgs))
+    for (let i = node.children.length - 1; i >= 0; i--) {
+      stack.push({ node: node.children[i]!, depth: depth + 1 })
+    }
+  }
 
   return lines.join('\n')
 }
@@ -207,15 +231,19 @@ export function formatProcessTreeAsDot(
 
   // pid is already a unique, stable identifier, so it doubles as the dot
   // node id; the (possibly non-unique, arbitrary-text) label is separate.
-  const visit = (node: ProcessTreeNode): void => {
+  // Iterative pre-order walk, same shape as formatProcessTree's.
+  const stack: ProcessTreeNode[] = []
+  for (let i = nodes.length - 1; i >= 0; i--) stack.push(nodes[i]!)
+
+  while (stack.length > 0) {
+    const node = stack.pop()!
     lines.push(`  ${node.pid} [label=${dotQuote(nodeLabel(node, showPid, showArgs))}];`)
     for (const child of node.children) {
       lines.push(`  ${node.pid} -> ${child.pid};`)
     }
-    for (const child of node.children) visit(child)
+    for (let i = node.children.length - 1; i >= 0; i--) stack.push(node.children[i]!)
   }
 
-  for (const node of nodes) visit(node)
   lines.push('}')
 
   return lines.join('\n')
