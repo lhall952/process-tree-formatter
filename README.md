@@ -117,7 +117,8 @@ mocked OS calls.
 
 Early skeleton. Normalization, tree construction, both renderers, and the
 CLI's input parsing all have unit test coverage (`npm test`), including
-dangling parents and cyclic ppid chains. The CLI supports text, JSON, and
-dot output. Rendering still recurses per tree depth, which is fine for a
-normal process tree but will blow the call stack on a pathologically deep
-or adversarially-crafted one.
+dangling parents, cyclic ppid chains, and a fuzz test that feeds hundreds
+of rounds of randomly malformed raw records through the whole pipeline.
+Tree construction and both renderers walk iteratively, not recursively, so
+a pathologically deep chain doesn't blow the call stack. The CLI supports
+text, JSON, and dot output.
