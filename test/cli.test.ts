@@ -6,6 +6,7 @@ import {
   formatProcessTree,
   formatProcessTreeAsDot,
   normalizeProcessRecords,
+  sortProcessTree,
 } from '../src/process-tree.js'
 
 test('parseInput reads a JSON array of raw records as-is', () => {
@@ -77,12 +78,38 @@ test('parseArgs treats a bare positional argument as the file path', () => {
 
 test('parseArgs reads --file, --args, --no-pid, and --indent', () => {
   const options = parseArgs(['--file', 'a.txt', '--args', '--no-pid', '--indent', '> '])
-  assert.deepEqual(options, { file: 'a.txt', format: 'text', showArgs: true, showPid: false, indent: '> ' })
+  assert.deepEqual(options, {
+    file: 'a.txt',
+    format: 'text',
+    sortBy: 'pid',
+    showArgs: true,
+    showPid: false,
+    indent: '> ',
+  })
 })
 
-test('parseArgs defaults to stdin, text format, no args, pids shown, two-space indent', () => {
+test('parseArgs defaults to stdin, text format, sort by pid, no args, pids shown, two-space indent', () => {
   const options = parseArgs([])
-  assert.deepEqual(options, { file: undefined, format: 'text', showArgs: false, showPid: true, indent: '  ' })
+  assert.deepEqual(options, {
+    file: undefined,
+    format: 'text',
+    sortBy: 'pid',
+    showArgs: false,
+    showPid: true,
+    indent: '  ',
+  })
+})
+
+test('parseArgs reads --sort-by command and user', () => {
+  const byCommand = parseArgs(['--sort-by', 'command'])
+  assert.equal(byCommand === 'help' ? undefined : byCommand.sortBy, 'command')
+
+  const byUser = parseArgs(['--sort-by', 'user'])
+  assert.equal(byUser === 'help' ? undefined : byUser.sortBy, 'user')
+})
+
+test('parseArgs rejects an unrecognized --sort-by value', () => {
+  assert.throws(() => parseArgs(['--sort-by', 'cpu']), /--sort-by must be "pid", "command", or "user"/)
 })
 
 test('parseArgs reads --format json', () => {
@@ -116,6 +143,22 @@ test('a parsed ps table feeds through to dot output with one node and edge per l
       '  42 [label="nginx: master process (42)"];',
       '}',
     ].join('\n'),
+  )
+})
+
+test('--sort-by command reorders siblings end to end, ties still broken by pid', () => {
+  const text = [
+    'UID   PID  PPID CMD',
+    'root    1     0 init',
+    'root   42     1 sshd',
+    'root   43     1 bash',
+    'root   44     1 bash',
+  ].join('\n')
+
+  const tree = sortProcessTree(buildProcessTree(normalizeProcessRecords(parseInput(text))), 'command')
+  assert.equal(
+    formatProcessTree(tree),
+    ['init (1)', '  bash (43)', '  bash (44)', '  sshd (42)'].join('\n'),
   )
 })
 

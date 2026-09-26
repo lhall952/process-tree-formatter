@@ -66,11 +66,18 @@ ps -ef | node dist/cli.js
 Options:
   --file <path>     read from this file instead of stdin
   --format <fmt>    "text" (default), "json", or "dot"
+  --sort-by <key>   sort siblings by "pid" (default), "command", or "user"
   --args            include command arguments in the output
   --no-pid          omit pids from the output
   --indent <str>    string used per indent level, text format only (default: two spaces)
   -h, --help        show this message
 ```
+
+`--sort-by` reorders siblings at every level of the tree - it doesn't change
+who's whose parent, just the order children print in. Ties (two processes
+with the same command, or the same user, or no user at all) fall back to
+pid order, so the output stays deterministic. It applies the same way
+regardless of `--format`.
 
 The table parser reads the header line to find the PID, PPID, command, and
 user columns (however the source names them - `CMD` or `COMMAND`, `UID` or
@@ -112,13 +119,16 @@ mocked OS calls.
   dangling parent links and breaking cycles deterministically.
 - `formatProcessTree` renders a forest as indented text.
 - `formatProcessTreeAsDot` renders a forest as a Graphviz `digraph`.
+- `sortProcessTree` reorders every level of a forest by pid, command, or
+  user, without changing parent/child relationships.
 
 ## Status
 
-Early skeleton. Normalization, tree construction, both renderers, and the
-CLI's input parsing all have unit test coverage (`npm test`), including
-dangling parents, cyclic ppid chains, and a fuzz test that feeds hundreds
-of rounds of randomly malformed raw records through the whole pipeline.
-Tree construction and both renderers walk iteratively, not recursively, so
-a pathologically deep chain doesn't blow the call stack. The CLI supports
-text, JSON, and dot output.
+Early skeleton. Normalization, tree construction, both renderers, sorting,
+and the CLI's input parsing all have unit test coverage (`npm test`),
+including dangling parents, cyclic ppid chains, and a fuzz test that feeds
+hundreds of rounds of randomly malformed raw records through the whole
+pipeline. Tree construction, both renderers, and sorting all walk
+iteratively, not recursively, so a pathologically deep chain doesn't blow
+the call stack. The CLI supports text, JSON, and dot output, and can sort
+siblings by pid, command, or user.

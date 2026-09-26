@@ -6,7 +6,9 @@ import {
   formatProcessTree,
   formatProcessTreeAsDot,
   normalizeProcessRecords,
+  sortProcessTree,
 } from './process-tree.js'
+import type { SortKey } from './process-tree.js'
 import type { RawProcessRecord } from './types.js'
 
 const USAGE = `usage: process-tree [file] [options]
@@ -19,6 +21,7 @@ docker inspect or a /proc scrape would produce).
 Options:
   --file <path>     read from this file instead of stdin
   --format <fmt>    "text" (default), "json", or "dot"
+  --sort-by <key>   sort siblings by "pid" (default), "command", or "user"
   --args            include command arguments in the output
   --no-pid          omit pids from the output
   --indent <str>    string used per indent level, text format only (default: two spaces)
@@ -29,6 +32,10 @@ args, user, children); --indent doesn't apply there. In dot format, each
 process becomes a node (keyed by pid) with an edge to each child, suitable
 for piping into "dot -Tpng"; --args and --no-pid shape the node labels,
 but --indent doesn't apply there either.
+
+--sort-by reorders siblings at every level of the tree (ties, including
+command or user collisions, break by pid); it applies the same way to all
+three output formats.
 `
 
 // Column names vary across ps variants ("PID" vs "pid", "CMD" vs "COMMAND",
@@ -100,6 +107,7 @@ export type OutputFormat = 'text' | 'json' | 'dot'
 interface CliOptions {
   readonly file: string | undefined
   readonly format: OutputFormat
+  readonly sortBy: SortKey
   readonly showArgs: boolean
   readonly showPid: boolean
   readonly indent: string
@@ -112,9 +120,17 @@ function parseFormat(value: string | undefined): OutputFormat {
   )
 }
 
+function parseSortBy(value: string | undefined): SortKey {
+  if (value === 'pid' || value === 'command' || value === 'user') return value
+  throw new Error(
+    `--sort-by must be "pid", "command", or "user", got ${value === undefined ? 'nothing' : JSON.stringify(value)}`,
+  )
+}
+
 export function parseArgs(argv: readonly string[]): CliOptions | 'help' {
   let file: string | undefined
   let format: OutputFormat = 'text'
+  let sortBy: SortKey = 'pid'
   let showArgs = false
   let showPid = true
   let indent = '  '
@@ -131,6 +147,9 @@ export function parseArgs(argv: readonly string[]): CliOptions | 'help' {
       case '--format':
         format = parseFormat(argv[++i])
         break
+      case '--sort-by':
+        sortBy = parseSortBy(argv[++i])
+        break
       case '--args':
         showArgs = true
         break
@@ -145,7 +164,7 @@ export function parseArgs(argv: readonly string[]): CliOptions | 'help' {
     }
   }
 
-  return { file, format, showArgs, showPid, indent }
+  return { file, format, sortBy, showArgs, showPid, indent }
 }
 
 function readInput(path: string | undefined): string {
@@ -162,7 +181,7 @@ function main(): void {
 
   const text = readInput(options.file)
   const records = normalizeProcessRecords(parseInput(text))
-  const tree = buildProcessTree(records)
+  const tree = sortProcessTree(buildProcessTree(records), options.sortBy)
 
   if (options.format === 'json') {
     process.stdout.write(`${JSON.stringify(tree, null, 2)}\n`)

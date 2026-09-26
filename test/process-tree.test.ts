@@ -5,6 +5,7 @@ import {
   formatProcessTree,
   formatProcessTreeAsDot,
   normalizeProcessRecords,
+  sortProcessTree,
 } from '../src/process-tree.js'
 import type { ProcessRecord } from '../src/types.js'
 
@@ -215,6 +216,60 @@ test('a chain deep enough to blow a naive recursive call stack still builds and 
 
   const dot = formatProcessTreeAsDot(tree)
   assert.equal(dot.split('\n').length, depth + 2)
+})
+
+test('sortProcessTree can reorder siblings by command name, breaking ties by pid', () => {
+  const tree = buildProcessTree([
+    record(1, null, 'init'),
+    record(2, 1, 'sshd'),
+    record(3, 1, 'bash'),
+    record(4, 1, 'bash'),
+  ])
+
+  const sorted = sortProcessTree(tree, 'command')
+  assert.deepEqual(pids(sorted[0]!.children), [3, 4, 2])
+})
+
+test('sortProcessTree can reorder roots by user, with null users sorting first', () => {
+  const tree = buildProcessTree([
+    { pid: 1, ppid: null, command: 'a', args: [], user: 'root' },
+    { pid: 2, ppid: null, command: 'b', args: [], user: null },
+    { pid: 3, ppid: null, command: 'c', args: [], user: 'alice' },
+  ])
+
+  const sorted = sortProcessTree(tree, 'user')
+  assert.deepEqual(pids(sorted), [2, 3, 1])
+})
+
+test('sortProcessTree with "pid" matches the tree\'s existing pid order', () => {
+  const tree = buildProcessTree([record(1, null, 'z'), record(2, 1, 'a'), record(3, 1, 'b')])
+  assert.deepEqual(sortProcessTree(tree, 'pid'), tree)
+})
+
+test('sortProcessTree does not mutate its input', () => {
+  const tree = buildProcessTree([record(1, null, 'init'), record(2, 1, 'z'), record(3, 1, 'a')])
+  const before = pids(tree[0]!.children)
+  sortProcessTree(tree, 'command')
+  assert.deepEqual(pids(tree[0]!.children), before)
+})
+
+test('sortProcessTree handles a chain deep enough to blow a naive recursive call stack', () => {
+  const depth = 200_000
+  const records: ProcessRecord[] = [record(0, null, 'init')]
+  for (let pid = 1; pid < depth; pid++) {
+    records.push(record(pid, pid - 1, `p${pid}`))
+  }
+
+  const tree = sortProcessTree(buildProcessTree(records), 'command')
+  assert.equal(pids(tree)[0], 0)
+
+  let deepest = tree[0]!
+  let count = 1
+  while (deepest.children.length > 0) {
+    deepest = deepest.children[0]!
+    count++
+  }
+  assert.equal(count, depth)
 })
 
 test('formatProcessTreeAsDot handles multiple roots and disconnected trees', () => {

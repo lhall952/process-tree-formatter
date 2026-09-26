@@ -173,6 +173,53 @@ export function buildProcessTree(records: readonly ProcessRecord[]): ProcessTree
   return sortedRoots.map((record) => nodeOf.get(record.pid)!)
 }
 
+export type SortKey = 'pid' | 'command' | 'user'
+
+function compareBy(key: SortKey): (a: ProcessTreeNode, b: ProcessTreeNode) => number {
+  switch (key) {
+    case 'command':
+      return (a, b) => a.command.localeCompare(b.command) || compareByPid(a, b)
+    case 'user':
+      return (a, b) => (a.user ?? '').localeCompare(b.user ?? '') || compareByPid(a, b)
+    case 'pid':
+      return compareByPid
+  }
+}
+
+// Re-sorts every level of the forest by the given key, falling back to pid
+// to break ties so the ordering stays deterministic. Does not mutate its
+// input; buildProcessTree's own pid ordering is what this replaces.
+//
+// Same two-stack iterative post-order shape as buildProcessTree: walk down
+// collecting every node once, then rebuild bottom-up so a node's children
+// are already sorted and boxed by the time the node itself is rebuilt.
+export function sortProcessTree(
+  nodes: readonly ProcessTreeNode[],
+  key: SortKey,
+): ProcessTreeNode[] {
+  const compare = compareBy(key)
+
+  const pushStack: ProcessTreeNode[] = nodes.slice()
+  const collectStack: ProcessTreeNode[] = []
+  while (pushStack.length > 0) {
+    const node = pushStack.pop()!
+    collectStack.push(node)
+    for (const child of node.children) pushStack.push(child)
+  }
+
+  const rebuilt = new Map<ProcessTreeNode, ProcessTreeNode>()
+  for (let i = collectStack.length - 1; i >= 0; i--) {
+    const node = collectStack[i]!
+    const children = node.children.map((child) => rebuilt.get(child)!)
+    children.sort(compare)
+    rebuilt.set(node, { ...node, children })
+  }
+
+  const roots = nodes.map((node) => rebuilt.get(node)!)
+  roots.sort(compare)
+  return roots
+}
+
 function nodeLabel(node: ProcessTreeNode, showPid: boolean, showArgs: boolean): string {
   const pidPart = showPid ? ` (${node.pid})` : ''
   const argsPart = showArgs && node.args.length > 0 ? ` ${node.args.join(' ')}` : ''
